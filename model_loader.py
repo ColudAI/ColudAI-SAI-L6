@@ -1,4 +1,3 @@
-# model_loader.py
 import torch
 from typing import Tuple
 from tokenizer import BpeTokenizer

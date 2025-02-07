@@ -1,22 +1,22 @@
 import torch
 import math
-from typing import Optional
-from tokenizers import Tokenizer
+from typing import Optional, Dict, Any
+from tokenizer import BpeTokenizer  # 假设 BpeTokenizer 定义在 tokenizer.py 中
 from torch import Tensor
 from config import CONFIG, LOGGER  # 使用新的配置系统
 
 def generate_response(
     model: TransformerModel,
-    tokenizer: Tokenizer,
+    tokenizer: BpeTokenizer,
     input_text: str,
-    generation_config: Optional[dict] = None
+    generation_config: Optional[Dict[str, Any]] = None
 ) -> str:
     """
-    生成对话响应的完整实现，适配最新配置系统
+    生成对话响应的完整实现，适配最新配置系统和BpeTokenizer
     
     参数:
         model: 加载的Transformer模型
-        tokenizer: 分词器实例
+        tokenizer: 分词器实例（BpeTokenizer）
         input_text: 输入的对话文本
         generation_config: 可选的生成参数覆盖配置
         
@@ -30,19 +30,23 @@ def generate_response(
         "top_k": CONFIG.GENERATION_TOP_K,
         "top_p": CONFIG.GENERATION_TOP_P,
         "device": CONFIG.DEVICE,
-        "eos_token": CONFIG.EOS_TOKEN,
-        "bos_token": CONFIG.BOS_TOKEN,
-        "sep_token": CONFIG.SEP_TOKEN,
-        "pad_token": CONFIG.PAD_TOKEN
+        "eos_token_id": tokenizer.token_to_id(CONFIG.EOS_TOKEN),
+        "bos_token_id": tokenizer.token_to_id(CONFIG.BOS_TOKEN),
+        "sep_token_id": tokenizer.token_to_id(CONFIG.SEP_TOKEN),
+        "pad_token_id": tokenizer.token_to_id(CONFIG.PAD_TOKEN)
     }
     if generation_config:
         config.update(generation_config)
     
     LOGGER.debug(f"生成配置: {config}")
 
+    # 输入校验
+    if config["bos_token_id"] is None or config["sep_token_id"] is None or config["eos_token_id"] is None:
+        raise ValueError("分词器缺少必要的特殊标记")
+
     # 准备输入序列
-    formatted_input = f"{config['bos_token']}{input_text}{config['sep_token']}"
-    input_ids = tokenizer.encode(formatted_input).ids
+    formatted_input = f"{CONFIG.BOS_TOKEN}{input_text}{CONFIG.SEP_TOKEN}"
+    input_ids = tokenizer.encode(formatted_input)
     input_tensor = torch.tensor([input_ids], dtype=torch.long, device=config["device"])
 
     # 编码阶段
@@ -52,9 +56,8 @@ def generate_response(
         memory = model.encoder(src_embed)
 
     # 解码初始化
-    eos_token_id = tokenizer.token_to_id(config["eos_token"])
     current_ids = torch.tensor(
-        [[tokenizer.token_to_id(config["bos_token"])]], 
+        [[config["bos_token_id"]]], 
         dtype=torch.long, 
         device=config["device"]
     )
@@ -81,14 +84,14 @@ def generate_response(
             current_ids = torch.cat([current_ids, next_token], dim=1)
 
             # 终止条件检查
-            if next_token.item() == eos_token_id:
+            if next_token.item() == config["eos_token_id"]:
                 break
 
     # 解码结果并清理特殊标记
     decoded = tokenizer.decode(current_ids[0].tolist(), skip_special_tokens=True)
     return decoded.strip()
 
-def process_probs(logits: Tensor, config: dict) -> Tensor:
+def process_probs(logits: Tensor, config: Dict[str, Any]) -> Tensor:
     """概率处理管道，包含Top-K和Top-P采样"""
     probs = torch.softmax(logits, dim=-1)
     
@@ -109,7 +112,10 @@ def process_probs(logits: Tensor, config: dict) -> Tensor:
         sorted_indices_to_remove[..., 0] = False
         
         # 应用掩码并重新归一化
-        probs = probs.masked_fill(sorted_indices_to_remove.scatter(-1, sorted_indices, sorted_indices_to_remove), 0.0)
+        probs = probs.masked_fill(
+            sorted_indices_to_remove.scatter(-1, sorted_indices, sorted_indices_to_remove), 
+            0.0
+        )
     
     # 确保概率有效
     if torch.any(torch.isnan(probs)):
