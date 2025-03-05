@@ -1,7 +1,7 @@
 
 # 基于Transformer的MoE模型实现
 <div align="center">
- <img src="https://raw.githubusercontent.com/Lt2023/ColudAI-SAI-L6/refs/heads/main/logo%401x%20(2).png" width="60%" alt="ColludAI " />
+ <img src="https://raw.githubusercontent.com/ColudAI/ColudAI-SAI-L6/refs/heads/main/%E5%AE%B9%E5%99%A8%201%401x%20(7).png" width="60%" alt="ColludAI " />
 </div>
 <hr>
 本仓库包含一个基于Transformer的混合专家模型（Mixture of Experts, MoE）的实现，使用PyTorch和tokenizers库。它包括位置编码、专家层以及完整的Transformer架构（编码器和解码器）等模块。
